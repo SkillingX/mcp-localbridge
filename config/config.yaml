@@ -1,0 +1,165 @@
+# MCP LocalBridge Configuration File
+# 环境变量优先级：环境变量 > config.yaml
+# Environment variables take precedence over config.yaml values
+
+# Server configuration
+server:
+  name: "MCP LocalBridge"
+  version: "1.0.0"
+  # Request timeout in seconds
+  request_timeout: 300
+  # Enable recovery from panics
+  enable_recovery: true
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: json, text
+  format: "json"
+  # Log output: stdout, stderr, file path
+  output: "stdout"
+
+# Transport configurations
+# 可以启用任意组合的传输协议
+# You can enable any combination of transport protocols
+transports:
+  # Stdio transport (standard input/output)
+  stdio:
+    enabled: true
+
+  # HTTP/Streamable transport
+  http:
+    enabled: true
+    host: "0.0.0.0"
+    port: 8080
+    endpoint_path: "/mcp"
+    # Heartbeat interval in seconds
+    heartbeat_interval: 30
+    # Stateless mode (true) or stateful mode (false)
+    stateless: false
+
+  # SSE (Server-Sent Events) transport
+  sse:
+    enabled: true
+    host: "0.0.0.0"
+    port: 8081
+    base_path: "/api/mcp"
+    sse_endpoint: "/sse"
+    message_endpoint: "/message"
+    # Keep-alive ping interval in seconds
+    keepalive_interval: 30
+
+  # InProcess transport (direct function calls)
+  inprocess:
+    enabled: false
+
+# Database configurations
+# 注意：项目不启动数据库容器，假设用户已在宿主机运行数据库
+# Note: This project does NOT start database containers.
+# It assumes databases are already running on the host machine.
+databases:
+  # MySQL instances
+  mysql:
+    - name: "mysql_main"
+      enabled: true
+      # 在 Docker 中使用 host.docker.internal 连接宿主机数据库
+      # Linux 用户需要在 docker-compose.yml 中配置 extra_hosts
+      # Use host.docker.internal to connect to host databases from Docker
+      # Linux users need to configure extra_hosts in docker-compose.yml
+      host: "${DB_MYSQL_HOST:-host.docker.internal}"
+      port: "${DB_MYSQL_PORT:-3306}"
+      user: "${DB_MYSQL_USER:-root}"
+      password: "${DB_MYSQL_PASSWORD:-password}"
+      database: "${DB_MYSQL_DATABASE:-testdb}"
+      # Connection pool settings
+      max_open_conns: 25
+      max_idle_conns: 5
+      conn_max_lifetime: 300  # seconds
+
+  # PostgreSQL instances
+  postgres:
+    - name: "postgres_main"
+      enabled: false
+      host: "${DB_POSTGRES_HOST:-host.docker.internal}"
+      port: "${DB_POSTGRES_PORT:-5432}"
+      user: "${DB_POSTGRES_USER:-postgres}"
+      password: "${DB_POSTGRES_PASSWORD:-password}"
+      database: "${DB_POSTGRES_DATABASE:-testdb}"
+      sslmode: "${DB_POSTGRES_SSLMODE:-disable}"
+      max_open_conns: 25
+      max_idle_conns: 5
+      conn_max_lifetime: 300  # seconds
+
+# Redis configurations
+redis:
+  instances:
+    - name: "redis_main"
+      enabled: true
+      host: "${REDIS_HOST:-host.docker.internal}"
+      port: "${REDIS_PORT:-6379}"
+      password: "${REDIS_PASSWORD:-}"
+      db: "${REDIS_DB:-0}"
+      # Connection pool settings
+      pool_size: 10
+      min_idle_conns: 2
+      # Dial timeout in seconds
+      dial_timeout: 5
+      # Read/Write timeout in seconds
+      read_timeout: 3
+      write_timeout: 3
+
+# MCP Tools configuration
+tools:
+  # Database query tools
+  db:
+    # 默认启用 dry-run 模式（只返回预览 SQL，不执行）
+    # 生产环境中建议保持启用，需要执行时通过工具参数控制
+    # Default to dry-run mode (returns preview SQL without execution)
+    # Recommended to keep enabled in production; control execution via tool parameters
+    default_dry_run: true
+    # Maximum rows to return in query results
+    max_rows: 1000
+    # Query timeout in seconds
+    query_timeout: 30
+    # Enable table data preview
+    enable_preview: true
+    preview_limit: 10
+
+  # Redis tools
+  redis:
+    # Maximum keys to return in scan operations
+    max_scan_keys: 100
+    # Scan count per iteration
+    scan_count: 10
+
+  # Insights tools
+  insights:
+    # Introspection cache settings
+    introspection:
+      # Cache TTL in seconds
+      cache_ttl: 3600
+      # Use Redis cache (if false, use in-memory cache only)
+      use_redis_cache: true
+
+    # Semantic summary settings
+    semantic_summary:
+      # Number of sample rows to analyze
+      sample_size: 100
+      # Maximum columns to include in summary
+      max_columns: 50
+
+    # Analytics settings
+    analytics:
+      # Maximum aggregation result rows
+      max_result_rows: 1000
+      # Execution timeout in seconds
+      execution_timeout: 60
+
+    # Relationship analysis settings
+    relationship:
+      # Maximum depth for foreign key traversal
+      max_depth: 3
+      # Cache relationship graph
+      cache_enabled: true
+      cache_ttl: 7200  # seconds

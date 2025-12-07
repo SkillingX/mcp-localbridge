@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mcp-localbridge:latest
+    container_name: mcp-localbridge
+    restart: always
+    ports:
+      - "8080:8080"  # HTTP transport
+      - "8081:8081"  # SSE transport
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
+    environment:
+      # Override configuration with environment variables if needed
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - DB_MYSQL_HOST=${DB_MYSQL_HOST:-host.docker.internal}
+      - DB_MYSQL_PORT=${DB_MYSQL_PORT:-3306}
+      - DB_MYSQL_USER=${DB_MYSQL_USER:-root}
+      - DB_MYSQL_PASSWORD=${DB_MYSQL_PASSWORD:-password}
+      - DB_MYSQL_DATABASE=${DB_MYSQL_DATABASE:-testdb}
+      - REDIS_HOST=${REDIS_HOST:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    extra_hosts:
+      # For Linux: map host.docker.internal to host machine
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mcp-network
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  mcp-network:
+    driver: bridge
+
+# NOTE: This docker-compose.yml DOES NOT include database or Redis services.
+# You must have MySQL/PostgreSQL/Redis running on your host machine.
+#
+# For macOS/Windows: Use host.docker.internal to connect to host databases
+#
+# For Linux: The extra_hosts configuration maps host.docker.internal to host-gateway
