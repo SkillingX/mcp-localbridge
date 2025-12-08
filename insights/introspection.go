@@ -41,11 +41,10 @@ func NewIntrospectionHandler(
 func (h *IntrospectionHandler) HandleIntrospection(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling introspection tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameter using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
@@ -55,10 +54,7 @@ func (h *IntrospectionHandler) HandleIntrospection(ctx context.Context, request 
 	}
 
 	// Check if refresh is requested
-	refresh := false
-	if refreshStr, ok := args["refresh"].(string); ok {
-		refresh = refreshStr == "true"
-	}
+	refresh := request.GetBool("refresh", false)
 
 	// Try to get from cache first (if not refresh and Redis cache is enabled)
 	cacheKey := fmt.Sprintf("introspection:%s", dbName)
@@ -76,7 +72,6 @@ func (h *IntrospectionHandler) HandleIntrospection(ctx context.Context, request 
 
 	// Get table list
 	var tables []string
-	var err error
 	switch r := repo.(type) {
 	case *db.MySQLRepository:
 		tables, err = r.GetTableList(ctx)

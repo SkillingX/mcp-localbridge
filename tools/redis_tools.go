@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -34,16 +33,15 @@ func NewRedisToolsHandler(clients map[string]*cache.RedisClient, cfg config.Redi
 func (h *RedisToolsHandler) HandleRedisGet(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling redis_get tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	redisName, ok := args["redis"].(string)
-	if !ok || redisName == "" {
-		return mcp.NewToolResultError("missing required parameter 'redis'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	redisName, err := request.RequireString("redis")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	key, ok := args["key"].(string)
-	if !ok || key == "" {
-		return mcp.NewToolResultError("missing required parameter 'key'"), nil
+	key, err := request.RequireString("key")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get Redis client
@@ -74,21 +72,20 @@ func (h *RedisToolsHandler) HandleRedisGet(ctx context.Context, request mcp.Call
 func (h *RedisToolsHandler) HandleRedisSet(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling redis_set tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	redisName, ok := args["redis"].(string)
-	if !ok || redisName == "" {
-		return mcp.NewToolResultError("missing required parameter 'redis'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	redisName, err := request.RequireString("redis")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	key, ok := args["key"].(string)
-	if !ok || key == "" {
-		return mcp.NewToolResultError("missing required parameter 'key'"), nil
+	key, err := request.RequireString("key")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	value, ok := args["value"].(string)
-	if !ok || value == "" {
-		return mcp.NewToolResultError("missing required parameter 'value'"), nil
+	value, err := request.RequireString("value")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get Redis client
@@ -97,12 +94,11 @@ func (h *RedisToolsHandler) HandleRedisSet(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError(fmt.Sprintf("Redis '%s' not found or not enabled", redisName)), nil
 	}
 
-	// Parse optional TTL
+	// Parse optional TTL with GetInt (more type-safe)
+	ttl := request.GetInt("ttl", 0)
 	var expiration time.Duration
-	if ttlStr, ok := args["ttl"].(string); ok && ttlStr != "" {
-		if ttl, err := strconv.Atoi(ttlStr); err == nil && ttl > 0 {
-			expiration = time.Duration(ttl) * time.Second
-		}
+	if ttl > 0 {
+		expiration = time.Duration(ttl) * time.Second
 	}
 
 	// Set value
@@ -126,17 +122,14 @@ func (h *RedisToolsHandler) HandleRedisSet(ctx context.Context, request mcp.Call
 func (h *RedisToolsHandler) HandleRedisScan(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling redis_scan tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	redisName, ok := args["redis"].(string)
-	if !ok || redisName == "" {
-		return mcp.NewToolResultError("missing required parameter 'redis'"), nil
+	// Extract required parameter using mcp-go v0.43.2 best practices
+	redisName, err := request.RequireString("redis")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	pattern := "*" // default pattern
-	if patternStr, ok := args["pattern"].(string); ok && patternStr != "" {
-		pattern = patternStr
-	}
+	// Get pattern (default to "*")
+	pattern := request.GetString("pattern", "*")
 
 	// Get Redis client
 	client, ok := h.clients[redisName]

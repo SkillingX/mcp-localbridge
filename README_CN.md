@@ -11,7 +11,7 @@ MCP LocalBridge 是基于 [mcp-go](https://github.com/mark3labs/mcp-go) 构建�
 ### 核心特性
 
 - 🔐 **安全第一**：所有数据库查询使用参数化查询，防止 SQL 注入
-- 🚀 **多传输协议**：支持 Stdio、HTTP、SSE、InProcess 四种传输方式
+- 🚀 **多传输协议**：支持 Stdio、SSE（基于 HTTP 的流式传输）、InProcess 三种传输方式
 - 💾 **多数据库支持**：MySQL、PostgreSQL，易于扩展
 - ⚡ **Redis 缓存**：高性能缓存支持，提升查询效率
 - 🔍 **智能洞察**：提供数据库结构分析、关系图谱、语义摘要等高级功能
@@ -73,31 +73,38 @@ go run cmd/server/main.go -config config/config.yaml
 ./scripts/start.sh
 ```
 
-### Docker 部署
+### Docker 部署（推荐）
 
-1. **配置环境变量**
+**快速开始 - 3 步搞定：**
 
-创建 `.env` 文件（可选）：
+```bash
+# 1. 启动容器
+make docker-run
+
+# 2. 验证运行状态
+docker ps | grep mcp-localbridge
+
+# 3. 查看日志
+docker-compose logs -f
+```
+
+**常用命令：**
+
+```bash
+make docker-run         # 构建并启动容器
+make docker-stop        # 停止容器
+make docker-update      # 重新构建并重启（配置更改后使用）
+```
+
+**可选 - 环境变量配置：**
+
+创建 `.env` 文件覆盖配置：
 
 ```bash
 DB_MYSQL_HOST=host.docker.internal
-DB_MYSQL_PORT=3306
 DB_MYSQL_USER=root
 DB_MYSQL_PASSWORD=your_password
-DB_MYSQL_DATABASE=your_database
-```
-
-2. **启动服务**
-
-```bash
-# 构建并启动
-docker-compose up -d
-
-# 查看日志
-docker-compose logs -f
-
-# 停止服务
-docker-compose down
+# ... 其他变量
 ```
 
 **Linux 用户注意**：`docker-compose.yml` 已配置 `extra_hosts` 以支持 `host.docker.internal`。
@@ -105,12 +112,20 @@ docker-compose down
 ### 验证运行状态
 
 ```bash
-# 检查 HTTP transport 健康状态
-curl http://localhost:8080/health
+# 检查容器状态
+docker ps | grep mcp-localbridge
 
-# 查看日志
-docker-compose logs mcp-server
+# 检查 SSE 端点（返回 404 是正常的）
+curl http://localhost:28028/api/mcp/sse
+
+# 查看服务日志
+docker-compose logs --tail=50
 ```
+
+**预期结果：**
+- MySQL、PostgreSQL、Redis 初始化成功
+- 传输协议已启动：`["stdio","sse(0.0.0.0:28028)"]`
+- 日志中无错误信息
 
 ## 配置说明
 
@@ -120,22 +135,36 @@ docker-compose logs mcp-server
 
 ```yaml
 transports:
+  # Stdio 传输 - 用于本地进程通信
   stdio:
-    enabled: true  # 标准输入输出（用于 Claude Desktop 等）
+    enabled: true  # 标准输入输出（用于 Claude Desktop、Cursor、VS Code）
 
-  http:
-    enabled: true
-    host: "0.0.0.0"
-    port: 8080
-
+  # SSE 传输 - 基于 HTTP 的流式传输（推荐用于 HTTP 客户端）
+  # 这是 MCP 协议的主要 HTTP 传输方式
   sse:
     enabled: true
     host: "0.0.0.0"
-    port: 8081
+    port: 28028
+    base_path: "/api/mcp"
+    # 端点：GET  /api/mcp/sse（流式连接）
+    #      POST /api/mcp/message（消息发送）
 
+  # HTTP 传输 - 未来 JSON-RPC over HTTP 的占位符
+  # 注意：请使用 SSE 传输进行所有基于 HTTP 的 MCP 通信
+  http:
+    enabled: false  # mcp-go v0.11.0 中未实现
+    port: 28027
+
+  # InProcess 传输 - 用于测试和嵌入式场景
   inprocess:
-    enabled: false  # 进程内调用（用于测试）
+    enabled: false
 ```
+
+**重要说明**：**SSE（服务端发送事件）传输是 MCP 的标准 HTTP 协议**。它通过 HTTP 提供实时流式传输，是以下场景的推荐选择：
+- Docker 部署
+- 基于 Web 的客户端
+- IDE 集成（Cursor、VS Code）
+- 远程服务器访问
 
 ### 数据库连接配置
 

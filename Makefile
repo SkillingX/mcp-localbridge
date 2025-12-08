@@ -53,6 +53,9 @@ docker-stop: ## Stop Docker container
 	@echo "Stopping Docker container..."
 	@docker-compose down
 
+docker-update: docker-stop docker-build docker-run ## Update Docker image and restart container
+	@echo "Docker update complete"
+
 test: ## Run tests
 	@echo "Running tests..."
 	@go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...

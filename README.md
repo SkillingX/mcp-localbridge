@@ -11,7 +11,7 @@ MCP LocalBridge is a high-performance MCP server built on [mcp-go](https://githu
 ### Core Features
 
 - 🔐 **Security First**: All database queries use parameterized queries to prevent SQL injection
-- 🚀 **Multiple Transports**: Supports Stdio, HTTP, SSE, and InProcess transports
+- 🚀 **Multiple Transports**: Supports Stdio, SSE (HTTP-based streaming), and InProcess transports
 - 💾 **Multi-Database**: MySQL, PostgreSQL support with easy extensibility
 - ⚡ **Redis Caching**: High-performance caching for improved query efficiency
 - 🔍 **Intelligent Insights**: Database schema analysis, relationship graphs, semantic summaries
@@ -73,31 +73,38 @@ go run cmd/server/main.go -config config/config.yaml
 ./scripts/start.sh
 ```
 
-### Docker Deployment
+### Docker Deployment (Recommended)
 
-1. **Configure environment variables**
+**Quick Start - 3 Steps:**
 
-Create `.env` file (optional):
+```bash
+# 1. Start the container
+make docker-run
+
+# 2. Verify it's running
+docker ps | grep mcp-localbridge
+
+# 3. View logs
+docker-compose logs -f
+```
+
+**Useful Commands:**
+
+```bash
+make docker-run         # Build and start container
+make docker-stop        # Stop container
+make docker-update      # Rebuild and restart (after config changes)
+```
+
+**Optional - Environment Variables:**
+
+Create `.env` file to override configuration:
 
 ```bash
 DB_MYSQL_HOST=host.docker.internal
-DB_MYSQL_PORT=3306
 DB_MYSQL_USER=root
 DB_MYSQL_PASSWORD=your_password
-DB_MYSQL_DATABASE=your_database
-```
-
-2. **Start services**
-
-```bash
-# Build and start
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+# ... other variables
 ```
 
 **Linux Users**: The `docker-compose.yml` includes `extra_hosts` configuration to support `host.docker.internal`.
@@ -105,12 +112,20 @@ docker-compose down
 ### Verify Installation
 
 ```bash
-# Check HTTP transport health
-curl http://localhost:8080/health
+# Check container status
+docker ps | grep mcp-localbridge
 
-# View logs
-docker-compose logs mcp-server
+# Check SSE endpoint (should return 404, which is expected)
+curl http://localhost:28028/api/mcp/sse
+
+# View service logs
+docker-compose logs --tail=50
 ```
+
+**What to expect:**
+- MySQL, PostgreSQL, Redis initialized successfully
+- Transports started: `["stdio","sse(0.0.0.0:28028)"]`
+- No errors in logs
 
 ## Configuration
 
@@ -120,22 +135,36 @@ Enable any combination of transports in `config/config.yaml`:
 
 ```yaml
 transports:
+  # Stdio transport - for local process communication
   stdio:
-    enabled: true  # Standard I/O (for Claude Desktop, etc.)
+    enabled: true  # Standard I/O (for Claude Desktop, Cursor, VS Code)
 
-  http:
-    enabled: true
-    host: "0.0.0.0"
-    port: 8080
-
+  # SSE transport - HTTP-based streaming (RECOMMENDED for HTTP clients)
+  # This is the primary HTTP transport for MCP protocol
   sse:
     enabled: true
     host: "0.0.0.0"
-    port: 8081
+    port: 28028
+    base_path: "/api/mcp"
+    # Endpoints: GET  /api/mcp/sse (streaming)
+    #            POST /api/mcp/message (messages)
 
+  # HTTP transport - placeholder for future JSON-RPC over HTTP
+  # Note: Use SSE transport for all HTTP-based MCP communication
+  http:
+    enabled: false  # Not implemented in mcp-go v0.11.0
+    port: 28027
+
+  # InProcess transport - for testing and embedded scenarios
   inprocess:
-    enabled: false  # In-process calls (for testing)
+    enabled: false
 ```
+
+**Important**: The **SSE (Server-Sent Events) transport is the standard HTTP-based protocol** for MCP. It provides real-time streaming over HTTP and is the recommended choice for:
+- Docker deployments
+- Web-based clients
+- IDE integrations (Cursor, VS Code)
+- Remote server access
 
 ### Database Configuration
 
@@ -320,6 +349,224 @@ To execute queries in production:
 3. **Per-tool invocation**:
    ```json
    {"dry_run": "false"}
+   ```
+
+## IDE Integration & Vibe Coding Setup
+
+### Claude Desktop / Claude App Configuration
+
+Claude Desktop can connect to MCP servers using the Stdio transport.
+
+1. **Get the server path**
+   ```bash
+   which mcp-server
+   # or if using docker
+   pwd  # Get your project directory
+   ```
+
+2. **Edit Claude Desktop config**
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   - **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+3. **Add MCP LocalBridge configuration**
+   ```json
+   {
+     "mcpServers": {
+       "mcp-localbridge": {
+         "command": "/path/to/mcp-server",
+         "args": ["-config", "/path/to/config/config.yaml"],
+         "env": {
+           "LOG_LEVEL": "info",
+           "DB_MYSQL_HOST": "localhost",
+           "DB_MYSQL_USER": "root",
+           "DB_MYSQL_PASSWORD": "your_password"
+         }
+       }
+     }
+   }
+   ```
+
+4. **Verify in Claude Desktop**
+   - Restart Claude Desktop
+   - The MCP server will start automatically when you interact with it
+   - Check the server logs: `docker-compose logs -f` (if using Docker)
+
+### Cursor IDE Configuration
+
+Cursor supports MCP servers through SSE (HTTP-based) and Stdio transports.
+
+#### Option 1: Using SSE Transport (Recommended for Docker Deployments)
+
+1. **Start the MCP server with SSE transport enabled**
+   ```bash
+   # Using Docker (recommended)
+   make docker-run
+
+   # Or locally
+   make run-server
+   ```
+
+   Ensure SSE is enabled in `config/config.yaml`:
+   ```yaml
+   transports:
+     sse:
+       enabled: true
+       host: "0.0.0.0"
+       port: 28028
+       base_path: "/api/mcp"
+   ```
+
+2. **Open Cursor Settings** → **MCP Servers** → **Add Server**
+
+3. **Configure SSE connection**
+
+   If Cursor supports SSE/HTTP-based MCP:
+   ```json
+   {
+     "name": "mcp-localbridge",
+     "type": "sse",
+     "url": "http://localhost:28028/api/mcp",
+     "timeout": 30000
+   }
+   ```
+
+   Or using generic HTTP configuration:
+   ```json
+   {
+     "name": "mcp-localbridge",
+     "type": "http",
+     "url": "http://localhost:28028/api/mcp",
+     "timeout": 30000
+   }
+   ```
+
+4. **Verify connection**
+   - Server should appear as "connected" in Cursor's MCP panel
+   - Test with: `db_table_list`, `db_table_preview`
+
+#### Option 2: Using Stdio Transport (Local Development)
+
+For local development with direct process communication:
+
+```json
+{
+  "name": "mcp-localbridge",
+  "command": "/path/to/bin/mcp-server",
+  "args": ["-config", "/path/to/config/config.yaml"],
+  "env": {
+    "LOG_LEVEL": "info",
+    "DB_MYSQL_HOST": "localhost"
+  }
+}
+```
+
+**Note**: Stdio requires local binary. For Docker deployments, use SSE transport.
+
+### Claude Code (VS Code Extension) Configuration
+
+Claude Code can use MCP servers through Stdio or SSE transport.
+
+#### Option 1: Using Stdio Transport (Local Development)
+
+1. **Install Claude Code extension** in VS Code
+
+2. **Create or edit `.claude/mcp-config.json`** in your project root
+   ```json
+   {
+     "servers": [
+       {
+         "name": "mcp-localbridge",
+         "command": "/path/to/bin/mcp-server",
+         "args": ["-config", "/path/to/config/config.yaml"],
+         "env": {
+           "LOG_LEVEL": "info",
+           "DB_MYSQL_HOST": "localhost"
+         },
+         "transport": "stdio"
+       }
+     ]
+   }
+   ```
+
+#### Option 2: Using SSE Transport (Docker Deployment)
+
+For Docker-based deployment, use SSE transport:
+
+```json
+{
+  "servers": [
+    {
+      "name": "mcp-localbridge",
+      "type": "sse",
+      "url": "http://localhost:28028/api/mcp",
+      "timeout": 30000
+    }
+  ]
+}
+```
+
+**Verify in Claude Code**:
+- Open the MCP panel in Claude Code
+- Server should be listed and connected
+- Test available tools: `db_query`, `redis_get`, `introspection`
+
+### Quick Docker Setup for IDE Integration
+
+For quick setup with Docker:
+
+```bash
+# Build and run the server
+make docker-run
+
+# Update server with config changes
+make docker-update
+
+# View logs
+docker-compose logs -f
+
+# Stop server
+make docker-stop
+```
+
+Then configure your IDE to connect to:
+- **SSE (Recommended)**: `http://localhost:28028/api/mcp`
+  - Primary HTTP-based transport for MCP
+  - Supports real-time streaming
+  - Works with Docker deployments
+
+- **Stdio (Local only)**: Direct process communication
+  - Command: `/path/to/bin/mcp-server -config /path/to/config/config.yaml`
+  - Best for local development
+  - Requires local binary build
+
+### Troubleshooting IDE Connections
+
+1. **Connection refused**
+   - Verify server is running: `docker ps` or `curl http://localhost:28027/health`
+   - Check firewall rules
+   - Ensure correct port numbers
+
+2. **Tools not showing up**
+   - Check server logs: `docker-compose logs mcp-server`
+   - Verify database connections: `docker-compose logs | grep -i "error"`
+   - Ensure config.yaml is valid YAML
+
+3. **Database connection errors in IDE**
+   - Verify database is running on host machine
+   - Check config credentials in `config/config.yaml`
+   - For Docker: ensure using `host.docker.internal` (macOS/Windows) or proper host IP (Linux)
+
+4. **Logs and debugging**
+   ```bash
+   # View real-time logs
+   docker-compose logs -f
+
+   # Increase log level for debugging
+   LOG_LEVEL=debug make docker-run
+
+   # Check server health
+   curl -v http://localhost:28027/health
    ```
 
 ## Security Best Practices

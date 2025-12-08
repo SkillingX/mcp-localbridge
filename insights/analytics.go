@@ -39,26 +39,25 @@ func NewAnalyticsHandler(
 func (h *AnalyticsHandler) HandleAnalytics(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling analytics tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	tableName, ok := args["table"].(string)
-	if !ok || tableName == "" {
-		return mcp.NewToolResultError("missing required parameter 'table'"), nil
+	tableName, err := request.RequireString("table")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	column, ok := args["column"].(string)
-	if !ok || column == "" {
-		return mcp.NewToolResultError("missing required parameter 'column'"), nil
+	column, err := request.RequireString("column")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	aggFunction, ok := args["function"].(string)
-	if !ok || aggFunction == "" {
-		return mcp.NewToolResultError("missing required parameter 'function'"), nil
+	aggFunction, err := request.RequireString("function")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Validate aggregate function
@@ -78,16 +77,14 @@ func (h *AnalyticsHandler) HandleAnalytics(ctx context.Context, request mcp.Call
 
 	// Optional: conditions and group_by
 	var conditions map[string]any
-	if condStr, ok := args["conditions"].(string); ok && condStr != "" {
+	condStr := request.GetString("conditions", "")
+	if condStr != "" {
 		if err := json.Unmarshal([]byte(condStr), &conditions); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("invalid conditions JSON: %v", err)), nil
 		}
 	}
 
-	groupBy := ""
-	if gb, ok := args["group_by"].(string); ok {
-		groupBy = gb
-	}
+	groupBy := request.GetString("group_by", "")
 
 	// Build aggregation query using QueryBuilder (always parameterized)
 	qb := db.NewQueryBuilder(repo.GetDriver())

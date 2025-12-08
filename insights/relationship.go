@@ -41,11 +41,10 @@ func NewRelationshipHandler(
 func (h *RelationshipHandler) HandleRelationship(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling relationship tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameter using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
@@ -55,10 +54,7 @@ func (h *RelationshipHandler) HandleRelationship(ctx context.Context, request mc
 	}
 
 	// Optional: specific table to analyze
-	tableName := ""
-	if tn, ok := args["table"].(string); ok {
-		tableName = tn
-	}
+	tableName := request.GetString("table", "")
 
 	// Check cache
 	cacheKey := fmt.Sprintf("relationships:%s", dbName)
@@ -79,7 +75,6 @@ func (h *RelationshipHandler) HandleRelationship(ctx context.Context, request mc
 
 	// Get table list
 	var tables []string
-	var err error
 	if tableName != "" {
 		tables = []string{tableName}
 	} else {

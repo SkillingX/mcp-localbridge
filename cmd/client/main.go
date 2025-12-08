@@ -14,19 +14,33 @@ import (
 
 // MCPClient provides a simple client for testing and debugging MCP server
 type MCPClient struct {
-	client *client.StdioMCPClient
+	mcpClient client.MCPClient
+	cancel    context.CancelFunc // For canceling long-lived SSE connection
 }
 
 func main() {
 	// Parse command-line flags
-	serverCmd := flag.String("server", "./bin/mcp-server", "Path to MCP server executable")
+	serverCmd := flag.String("server", "./bin/mcp-server", "Path to MCP server executable (for stdio)")
+	sseURL := flag.String("sse", "", "SSE endpoint URL (e.g., 'http://localhost:28028/api/mcp/sse')")
 	tool := flag.String("tool", "", "Tool name to call (e.g., 'db_table_list')")
 	args := flag.String("args", "{}", "JSON string of tool arguments")
 	list := flag.Bool("list", false, "List available tools")
 	flag.Parse()
 
-	// Create client
-	mcpClient, err := newMCPClient(*serverCmd)
+	// Determine transport type
+	var mcpClient *MCPClient
+	var err error
+
+	if *sseURL != "" {
+		// Use SSE transport
+		log.Printf("Connecting to SSE server at %s...\n", *sseURL)
+		mcpClient, err = newSSEMCPClient(*sseURL)
+	} else {
+		// Use stdio transport (default)
+		log.Printf("Starting stdio server: %s\n", *serverCmd)
+		mcpClient, err = newStdioMCPClient(*serverCmd)
+	}
+
 	if err != nil {
 		log.Fatalf("Failed to create MCP client: %v", err)
 	}
@@ -54,8 +68,8 @@ func main() {
 	flag.Usage()
 }
 
-// newMCPClient creates a new MCP client connected to the server via stdio
-func newMCPClient(serverCmd string) (*MCPClient, error) {
+// newStdioMCPClient creates a new MCP client connected to the server via stdio
+func newStdioMCPClient(serverCmd string) (*MCPClient, error) {
 	// Create stdio transport client
 	stdioClient, err := client.NewStdioMCPClient(serverCmd, nil)
 	if err != nil {
@@ -67,11 +81,7 @@ func newMCPClient(serverCmd string) (*MCPClient, error) {
 	defer cancel()
 
 	initReq := mcp.InitializeRequest{
-		Params: struct {
-			ProtocolVersion string                 `json:"protocolVersion"`
-			Capabilities    mcp.ClientCapabilities `json:"capabilities"`
-			ClientInfo      mcp.Implementation     `json:"clientInfo"`
-		}{
+		Params: mcp.InitializeParams{
 			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
 			ClientInfo: mcp.Implementation{
 				Name:    "mcp-localbridge-client",
@@ -86,13 +96,56 @@ func newMCPClient(serverCmd string) (*MCPClient, error) {
 		return nil, fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	return &MCPClient{client: stdioClient}, nil
+	return &MCPClient{mcpClient: stdioClient}, nil
+}
+
+// newSSEMCPClient creates a new MCP client connected to the server via SSE
+func newSSEMCPClient(baseURL string) (*MCPClient, error) {
+	// Create SSE transport client
+	sseClient, err := client.NewSSEMCPClient(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create SSE client: %w", err)
+	}
+
+	// Start the SSE client with a long-lived context
+	// The SSE stream needs to stay alive for the entire client lifetime
+	// Note: Start() creates a child context internally for the stream
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := sseClient.Start(ctx); err != nil {
+		cancel() // Clean up the long-lived context
+		return nil, fmt.Errorf("failed to start SSE client: %w", err)
+	}
+
+	// Initialize MCP connection
+	initCtx, initCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer initCancel()
+
+	initReq := mcp.InitializeRequest{
+		Params: mcp.InitializeParams{
+			ProtocolVersion: mcp.LATEST_PROTOCOL_VERSION,
+			ClientInfo: mcp.Implementation{
+				Name:    "mcp-localbridge-client",
+				Version: "1.0.0",
+			},
+			Capabilities: mcp.ClientCapabilities{},
+		},
+	}
+
+	_, err = sseClient.Initialize(initCtx, initReq)
+	if err != nil {
+		cancel() // Clean up the long-lived context
+		return nil, fmt.Errorf("failed to initialize: %w", err)
+	}
+
+	log.Println("SSE connection initialized successfully")
+	return &MCPClient{mcpClient: sseClient, cancel: cancel}, nil
 }
 
 // ListTools lists all available tools from the MCP server
 func (c *MCPClient) ListTools(ctx context.Context) error {
 	req := mcp.ListToolsRequest{}
-	resp, err := c.client.ListTools(ctx, req)
+	resp, err := c.mcpClient.ListTools(ctx, req)
 	if err != nil {
 		return fmt.Errorf("list tools failed: %w", err)
 	}
@@ -125,19 +178,13 @@ func (c *MCPClient) CallTool(ctx context.Context, toolName, argsJSON string) err
 
 	// Call tool
 	req := mcp.CallToolRequest{
-		Params: struct {
-			Name      string         `json:"name"`
-			Arguments map[string]any `json:"arguments,omitempty"`
-			Meta      *struct {
-				ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-			} `json:"_meta,omitempty"`
-		}{
+		Params: mcp.CallToolParams{
 			Name:      toolName,
 			Arguments: args,
 		},
 	}
 
-	resp, err := c.client.CallTool(ctx, req)
+	resp, err := c.mcpClient.CallTool(ctx, req)
 	if err != nil {
 		return fmt.Errorf("call tool failed: %w", err)
 	}
@@ -156,8 +203,14 @@ func (c *MCPClient) CallTool(ctx context.Context, toolName, argsJSON string) err
 
 // Close closes the client connection
 func (c *MCPClient) Close() error {
-	if c.client != nil {
-		return c.client.Close()
+	// Cancel the SSE context first
+	if c.cancel != nil {
+		c.cancel()
+	}
+
+	// Then close the client
+	if c.mcpClient != nil {
+		return c.mcpClient.Close()
 	}
 	return nil
 }

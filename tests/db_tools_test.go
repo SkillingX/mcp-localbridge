@@ -99,13 +99,7 @@ func TestDBTools_ParameterValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			request := mcp.CallToolRequest{
-				Params: struct {
-					Name      string                 `json:"name"`
-					Arguments map[string]interface{} `json:"arguments,omitempty"`
-					Meta      *struct {
-						ProgressToken mcp.ProgressToken `json:"progressToken,omitempty"`
-					} `json:"_meta,omitempty"`
-				}{
+				Params: mcp.CallToolParams{
 					Name:      "db_query",
 					Arguments: tt.args,
 				},

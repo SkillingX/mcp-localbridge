@@ -1,5 +1,4 @@
 # MCP LocalBridge Configuration File
-# 环境变量优先级：环境变量 > config.yaml
 # Environment variables take precedence over config.yaml values
 
 # Server configuration
@@ -7,55 +6,113 @@ server:
   name: "MCP LocalBridge"
   version: "1.0.0"
   # Request timeout in seconds
-  request_timeout: 300
+  request_timeout: 60
   # Enable recovery from panics
   enable_recovery: true
 
 # Logging configuration
 logging:
   # Log level: debug, info, warn, error
-  level: "info"
+  level: "debug"
   # Log format: json, text
   format: "json"
   # Log output: stdout, stderr, file path
-  output: "stdout"
+  output: "logs/mcp-localbridge.log"
 
-# Transport configurations
-# 可以启用任意组合的传输协议
-# You can enable any combination of transport protocols
+# ============================================================
+# Transport Configurations
+# ============================================================
+# MCP LocalBridge supports multiple transport protocols
+
 transports:
-  # Stdio transport (standard input/output)
+  # ----------------------------------------------------------
+  # Stdio Transport - Standard Input/Output
+  # ----------------------------------------------------------
+  # Purpose: Local IDE integration (Claude Desktop, Cursor, VS Code)
+  # How it works: Communication through process stdin/stdout
+  # Advantages: Fast startup, easy debugging, no network ports required
+  # Disadvantages: Only supports local single-process communication
+  # Recommended for: Local development, IDE integration
   stdio:
     enabled: true
 
-  # HTTP/Streamable transport
-  http:
-    enabled: true
-    host: "0.0.0.0"
-    port: 8080
-    endpoint_path: "/mcp"
-    # Heartbeat interval in seconds
-    heartbeat_interval: 30
-    # Stateless mode (true) or stateful mode (false)
-    stateless: false
-
-  # SSE (Server-Sent Events) transport
+  # ----------------------------------------------------------
+  # SSE Transport - Server-Sent Events (RECOMMENDED for HTTP)
+  # ----------------------------------------------------------
+  # IMPORTANT: SSE is the standard HTTP-based transport for MCP protocol
+  #
+  # Purpose: Docker deployment, web clients, remote access, HTTP-based IDE integration
+  # How it works: Real-time streaming over HTTP (standard HTTP protocol)
+  #
+  # Advantages:
+  #   - Uses standard HTTP/HTTPS protocol, firewall-friendly
+  #   - Supports multiple concurrent client connections
+  #   - Built-in automatic reconnection mechanism
+  #   - Perfect for containerized deployments
+  #   - Works through proxies and load balancers
+  #
+  # HTTP Endpoints (auto-generated):
+  #   - GET  {base_path}{sse_endpoint}      -> SSE streaming connection
+  #   - POST {base_path}{message_endpoint}  -> Message posting
+  #
+  # Actual endpoints (with this config):
+  #   - SSE connection: http://localhost:28028/api/mcp/sse
+  #   - Message posting: http://localhost:28028/api/mcp/message
+  #
+  # IDE configuration uses base URL:
+  #   - Cursor: http://localhost:28028/api/mcp
+  #   - VS Code: http://localhost:28028/api/mcp
+  #
+  # Recommended scenarios:
+  #   - Docker container deployment
+  #   - Cursor IDE remote connection
+  #   - Web application integration
+  #   - Cross-network access
   sse:
     enabled: true
-    host: "0.0.0.0"
-    port: 8081
-    base_path: "/api/mcp"
-    sse_endpoint: "/sse"
-    message_endpoint: "/message"
-    # Keep-alive ping interval in seconds
-    keepalive_interval: 30
+    host: "0.0.0.0"                # Listen on all network interfaces
+    port: 28028                    # SSE service port
+    base_path: "/api/mcp"          # API base path
+    sse_endpoint: "/sse"           # SSE connection endpoint (relative to base_path)
+    message_endpoint: "/message"   # Message endpoint (relative to base_path)
+    keepalive_interval: 30         # Keepalive heartbeat interval (seconds)
 
-  # InProcess transport (direct function calls)
+  # ----------------------------------------------------------
+  # HTTP Transport - Placeholder (Not Implemented)
+  # ----------------------------------------------------------
+  # WARNING: This transport is reserved for future use and not currently implemented
+  #
+  # Note:
+  #   The mcp-go v0.11.0 library does not provide traditional HTTP JSON-RPC API
+  #   All HTTP-based MCP communication should use the SSE transport above
+  #
+  # SSE vs HTTP comparison:
+  #   - SSE is the standard MCP HTTP implementation (recommended)
+  #   - SSE provides real-time bidirectional streaming communication
+  #   - HTTP (this one) is reserved for future possible RESTful JSON-RPC
+  #
+  # Current status: Placeholder, recommended to keep disabled
+  # For HTTP-based MCP functionality, use SSE transport above
+  http:
+    enabled: false                 # Not implemented, keep disabled
+    host: "0.0.0.0"
+    port: 28027                    # Reserved port
+    endpoint_path: "/mcp"
+    heartbeat_interval: 30
+    stateless: false
+
+  # ----------------------------------------------------------
+  # InProcess Transport - Direct In-Process Calls
+  # ----------------------------------------------------------
+  # Purpose: Unit tests, performance benchmarks, embedded scenarios
+  # How it works: Direct function calls, no network or serialization
+  # Advantages: Zero latency, no network overhead, easy debugging
+  # Disadvantages: Limited to same process only
+  # Recommended for: Testing, performance analysis
   inprocess:
     enabled: false
 
 # Database configurations
-# 注意：项目不启动数据库容器，假设用户已在宿主机运行数据库
 # Note: This project does NOT start database containers.
 # It assumes databases are already running on the host machine.
 databases:
@@ -63,15 +120,13 @@ databases:
   mysql:
     - name: "mysql_main"
       enabled: true
-      # 在 Docker 中使用 host.docker.internal 连接宿主机数据库
-      # Linux 用户需要在 docker-compose.yml 中配置 extra_hosts
       # Use host.docker.internal to connect to host databases from Docker
       # Linux users need to configure extra_hosts in docker-compose.yml
-      host: "${DB_MYSQL_HOST:-host.docker.internal}"
-      port: "${DB_MYSQL_PORT:-3306}"
-      user: "${DB_MYSQL_USER:-root}"
-      password: "${DB_MYSQL_PASSWORD:-password}"
-      database: "${DB_MYSQL_DATABASE:-testdb}"
+      host: "host.docker.internal"
+      port: 3306
+      user: "root"
+      password: "password"
+      database: "main"
       # Connection pool settings
       max_open_conns: 25
       max_idle_conns: 5
@@ -81,12 +136,12 @@ databases:
   postgres:
     - name: "postgres_main"
       enabled: false
-      host: "${DB_POSTGRES_HOST:-host.docker.internal}"
-      port: "${DB_POSTGRES_PORT:-5432}"
-      user: "${DB_POSTGRES_USER:-postgres}"
-      password: "${DB_POSTGRES_PASSWORD:-password}"
-      database: "${DB_POSTGRES_DATABASE:-testdb}"
-      sslmode: "${DB_POSTGRES_SSLMODE:-disable}"
+      host: "host.docker.internal"
+      port: 5432
+      user: "postgres"
+      password: "password"
+      database: "main"
+      sslmode: "disable"
       max_open_conns: 25
       max_idle_conns: 5
       conn_max_lifetime: 300  # seconds
@@ -96,10 +151,10 @@ redis:
   instances:
     - name: "redis_main"
       enabled: true
-      host: "${REDIS_HOST:-host.docker.internal}"
-      port: "${REDIS_PORT:-6379}"
-      password: "${REDIS_PASSWORD:-}"
-      db: "${REDIS_DB:-0}"
+      host: "host.docker.internal"
+      port: 6379
+      password: ""
+      db: 0
       # Connection pool settings
       pool_size: 10
       min_idle_conns: 2
@@ -113,8 +168,6 @@ redis:
 tools:
   # Database query tools
   db:
-    # 默认启用 dry-run 模式（只返回预览 SQL，不执行）
-    # 生产环境中建议保持启用，需要执行时通过工具参数控制
     # Default to dry-run mode (returns preview SQL without execution)
     # Recommended to keep enabled in production; control execution via tool parameters
     default_dry_run: true

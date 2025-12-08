@@ -37,16 +37,15 @@ func NewSemanticSummaryHandler(
 func (h *SemanticSummaryHandler) HandleSemanticSummary(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling semantic_summary tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	tableName, ok := args["table"].(string)
-	if !ok || tableName == "" {
-		return mcp.NewToolResultError("missing required parameter 'table'"), nil
+	tableName, err := request.RequireString("table")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
@@ -57,7 +56,6 @@ func (h *SemanticSummaryHandler) HandleSemanticSummary(ctx context.Context, requ
 
 	// Get table schema
 	var tableInfo *db.TableInfo
-	var err error
 	switch r := repo.(type) {
 	case *db.MySQLRepository:
 		tableInfo, err = r.GetTableInfo(ctx, tableName)

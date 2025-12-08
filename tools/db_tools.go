@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -37,17 +35,15 @@ func NewDBToolsHandler(repos map[string]db.Repository, cfg config.DBToolsConfig,
 func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling db_query tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	tableName, ok := args["table"].(string)
-	if !ok || tableName == "" {
-		return mcp.NewToolResultError("missing required parameter 'table'"), nil
+	tableName, err := request.RequireString("table")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
@@ -58,38 +54,29 @@ func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallTool
 
 	// Parse conditions (WHERE clause as JSON object)
 	var conditions map[string]any
-	if condStr, ok := args["conditions"].(string); ok && condStr != "" {
+	condStr := request.GetString("conditions", "")
+	if condStr != "" {
 		if err := json.Unmarshal([]byte(condStr), &conditions); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("invalid conditions JSON: %v", err)), nil
 		}
 	}
 
-	// Parse limit and offset
-	limit := h.config.MaxRows
-	if limitStr, ok := args["limit"].(string); ok {
-		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= h.config.MaxRows {
-			limit = l
-		}
+	// Parse limit and offset with GetInt (more type-safe)
+	limit := request.GetInt("limit", h.config.MaxRows)
+	if limit <= 0 || limit > h.config.MaxRows {
+		limit = h.config.MaxRows
 	}
 
-	offset := 0
-	if offsetStr, ok := args["offset"].(string); ok {
-		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
-			offset = o
-		}
+	offset := request.GetInt("offset", 0)
+	if offset < 0 {
+		offset = 0
 	}
 
 	// Parse order_by
-	orderBy := ""
-	if ob, ok := args["order_by"].(string); ok {
-		orderBy = ob
-	}
+	orderBy := request.GetString("order_by", "")
 
-	// Check dry-run mode (returns SQL preview without execution)
-	dryRun := h.config.DefaultDryRun
-	if dryRunStr, ok := args["dry_run"].(string); ok {
-		dryRun = strings.ToLower(dryRunStr) == "true"
-	}
+	// Check dry-run mode with GetBool
+	dryRun := request.GetBool("dry_run", h.config.DefaultDryRun)
 
 	// Build query using QueryBuilder (always parameterized)
 	qb := db.NewQueryBuilder(repo.GetDriver())
@@ -133,11 +120,10 @@ func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallTool
 func (h *DBToolsHandler) HandleDBTableList(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling db_table_list tool request")
 
-	// Extract database name
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameter using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
@@ -148,7 +134,6 @@ func (h *DBToolsHandler) HandleDBTableList(ctx context.Context, request mcp.Call
 
 	// Get table list based on repository type
 	var tables []string
-	var err error
 	switch r := repo.(type) {
 	case *db.MySQLRepository:
 		tables, err = r.GetTableList(ctx)
@@ -177,16 +162,15 @@ func (h *DBToolsHandler) HandleDBTableList(ctx context.Context, request mcp.Call
 func (h *DBToolsHandler) HandleDBTablePreview(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.logger.InfoContext(ctx, "Handling db_table_preview tool request")
 
-	// Extract parameters
-	args := request.Params.Arguments
-	dbName, ok := args["database"].(string)
-	if !ok || dbName == "" {
-		return mcp.NewToolResultError("missing required parameter 'database'"), nil
+	// Extract required parameters using mcp-go v0.43.2 best practices
+	dbName, err := request.RequireString("database")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	tableName, ok := args["table"].(string)
-	if !ok || tableName == "" {
-		return mcp.NewToolResultError("missing required parameter 'table'"), nil
+	tableName, err := request.RequireString("table")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Get repository
