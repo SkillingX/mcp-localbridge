@@ -351,6 +351,221 @@ databases:
    {"dry_run": "false"}
    ```
 
+## IDE 集成配置
+
+### Claude Desktop / Claude App 配置
+
+Claude Desktop 可以使用 Stdio 传输方式连接 MCP 服务器。
+
+1. **获取服务器路径**
+   ```bash
+   which mcp-server
+   # 或如果使用 docker
+   pwd  # 获取项目目录
+   ```
+
+2. **编辑 Claude Desktop 配置文件**
+   - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+   - **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+3. **添加 MCP LocalBridge 配置**
+   ```json
+   {
+     "mcpServers": {
+       "mcp-localbridge": {
+         "command": "/path/to/mcp-server",
+         "args": ["-config", "/path/to/config/config.yaml"],
+         "env": {
+           "LOG_LEVEL": "info",
+           "DB_MYSQL_HOST": "localhost",
+           "DB_MYSQL_USER": "root",
+           "DB_MYSQL_PASSWORD": "your_password"
+         }
+       }
+     }
+   }
+   ```
+
+4. **在 Claude Desktop 中验证**
+   - 重启 Claude Desktop
+   - MCP 服务器会在您与其交互时自动启动
+   - 检查服务器日志：`docker-compose logs -f`（如果使用 Docker）
+
+### Cursor IDE 配置
+
+Cursor 支持通过 SSE（基于 HTTP）和 Stdio 两种方式连接 MCP 服务器。
+
+**快速配置：**
+
+在 Cursor 的 MCP 设置中添加以下配置：
+
+**SSE 传输方式（推荐）：**
+```json
+{
+  "mcpServers": {
+    "mcp-localbridge": {
+      "type": "sse",
+      "url": "http://localhost:28028/api/mcp/sse",
+      "timeout": 30000
+    }
+  }
+}
+```
+
+**Stdio 传输方式：**
+```json
+{
+  "mcpServers": {
+    "mcp-localbridge": {
+      "command": "/path/to/mcp-server",
+      "args": ["-config", "/path/to/config/config.yaml"]
+    }
+  }
+}
+```
+
+#### 方式一：使用 SSE 传输（推荐，适用于 Docker 部署）
+
+1. **启动 MCP 服务器**（确保 SSE 传输已启用）
+   ```bash
+   # 使用 Docker（推荐）
+   make docker-run
+
+   # 或本地运行
+   make run-server
+   ```
+
+   确保在 `config/config.yaml` 中启用了 SSE：
+   ```yaml
+   transports:
+     sse:
+       enabled: true
+       host: "0.0.0.0"
+       port: 28028
+       base_path: "/api/mcp"
+   ```
+
+2. **打开 Cursor 设置** → **MCP Servers** → **Add Server**
+
+3. **添加 SSE 配置**（见上方快速配置）
+
+4. **验证连接**
+   - 服务器应在 Cursor 的 MCP 面板中显示为"已连接"
+   - 可使用 `db_table_list`、`db_table_preview` 等工具测试
+
+#### 方式二：使用 Stdio 传输（本地开发）
+
+适用于本地开发，需要本地二进制文件。添加 stdio 配置（见上方快速配置）。
+
+**注意**：Stdio 需要本地二进制文件。Docker 部署请使用 SSE 传输。
+
+### Claude Code (VS Code 扩展) 配置
+
+Claude Code 可以通过 Stdio 或 SSE 传输方式使用 MCP 服务器。
+
+#### 方式一：使用 Stdio 传输（本地开发）
+
+1. **在 VS Code 中安装 Claude Code 扩展**
+
+2. **在项目根目录创建或编辑 `.claude/mcp-config.json`**
+   ```json
+   {
+     "servers": [
+       {
+         "name": "mcp-localbridge",
+         "command": "/path/to/bin/mcp-server",
+         "args": ["-config", "/path/to/config/config.yaml"],
+         "env": {
+           "LOG_LEVEL": "info",
+           "DB_MYSQL_HOST": "localhost"
+         },
+         "transport": "stdio"
+       }
+     ]
+   }
+   ```
+
+#### 方式二：使用 SSE 传输（Docker 部署）
+
+对于基于 Docker 的部署，使用 SSE 传输：
+
+```json
+{
+  "servers": [
+    {
+      "name": "mcp-localbridge",
+      "type": "sse",
+      "url": "http://localhost:28028/api/mcp/sse",
+      "timeout": 30000
+    }
+  ]
+}
+```
+
+**在 Claude Code 中验证**：
+- 在 Claude Code 中打开 MCP 面板
+- 服务器应被列出并已连接
+- 测试可用工具：`db_query`、`redis_get`、`introspection`
+
+### 快速 Docker 设置（IDE 集成）
+
+快速使用 Docker 设置：
+
+```bash
+# 构建并运行服务器
+make docker-run
+
+# 配置更改后更新服务器
+make docker-update
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务器
+make docker-stop
+```
+
+然后配置您的 IDE 连接到：
+- **SSE（推荐）**：`http://localhost:28028/api/mcp/sse`
+  - MCP 的主要基于 HTTP 的传输方式
+  - 支持实时流式传输
+  - 适用于 Docker 部署
+
+- **Stdio（仅本地）**：直接进程通信
+  - 命令：`/path/to/bin/mcp-server -config /path/to/config/config.yaml`
+  - 最适合本地开发
+  - 需要本地二进制文件
+
+### IDE 连接故障排除
+
+1. **连接被拒绝**
+   - 验证服务器是否运行：`docker ps` 或 `curl http://localhost:28027/health`
+   - 检查防火墙规则
+   - 确保端口号正确
+
+2. **工具未显示**
+   - 检查服务器日志：`docker-compose logs mcp-server`
+   - 验证数据库连接：`docker-compose logs | grep -i "error"`
+   - 确保 config.yaml 是有效的 YAML
+
+3. **IDE 中的数据库连接错误**
+   - 验证数据库是否在宿主机上运行
+   - 检查 `config/config.yaml` 中的配置凭据
+   - 对于 Docker：确保使用 `host.docker.internal`（macOS/Windows）或正确的宿主机 IP（Linux）
+
+4. **日志和调试**
+   ```bash
+   # 查看实时日志
+   docker-compose logs -f
+
+   # 增加日志级别以进行调试
+   LOG_LEVEL=debug make docker-run
+
+   # 检查服务器健康状态
+   curl -v http://localhost:28027/health
+   ```
+
 ## 安全最佳实践
 
 1. ✅ **所有 SQL 查询都使用参数化查询**，防止 SQL 注入

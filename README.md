@@ -396,6 +396,35 @@ Claude Desktop can connect to MCP servers using the Stdio transport.
 
 Cursor supports MCP servers through SSE (HTTP-based) and Stdio transports.
 
+**Quick Configuration:**
+
+Add the following to your Cursor MCP settings:
+
+**SSE Transport (Recommended):**
+```json
+{
+  "mcpServers": {
+    "mcp-localbridge": {
+      "type": "sse",
+      "url": "http://localhost:28028/api/mcp/sse",
+      "timeout": 30000
+    }
+  }
+}
+```
+
+**Stdio Transport:**
+```json
+{
+  "mcpServers": {
+    "mcp-localbridge": {
+      "command": "/path/to/mcp-server",
+      "args": ["-config", "/path/to/config/config.yaml"]
+    }
+  }
+}
+```
+
 #### Option 1: Using SSE Transport (Recommended for Docker Deployments)
 
 1. **Start the MCP server with SSE transport enabled**
@@ -419,27 +448,7 @@ Cursor supports MCP servers through SSE (HTTP-based) and Stdio transports.
 
 2. **Open Cursor Settings** → **MCP Servers** → **Add Server**
 
-3. **Configure SSE connection**
-
-   If Cursor supports SSE/HTTP-based MCP:
-   ```json
-   {
-     "name": "mcp-localbridge",
-     "type": "sse",
-     "url": "http://localhost:28028/api/mcp",
-     "timeout": 30000
-   }
-   ```
-
-   Or using generic HTTP configuration:
-   ```json
-   {
-     "name": "mcp-localbridge",
-     "type": "http",
-     "url": "http://localhost:28028/api/mcp",
-     "timeout": 30000
-   }
-   ```
+3. **Add the SSE configuration** (see Quick Configuration above)
 
 4. **Verify connection**
    - Server should appear as "connected" in Cursor's MCP panel
@@ -447,19 +456,7 @@ Cursor supports MCP servers through SSE (HTTP-based) and Stdio transports.
 
 #### Option 2: Using Stdio Transport (Local Development)
 
-For local development with direct process communication:
-
-```json
-{
-  "name": "mcp-localbridge",
-  "command": "/path/to/bin/mcp-server",
-  "args": ["-config", "/path/to/config/config.yaml"],
-  "env": {
-    "LOG_LEVEL": "info",
-    "DB_MYSQL_HOST": "localhost"
-  }
-}
-```
+For local development with direct process communication, add the stdio configuration (see Quick Configuration above).
 
 **Note**: Stdio requires local binary. For Docker deployments, use SSE transport.
 
@@ -499,7 +496,7 @@ For Docker-based deployment, use SSE transport:
     {
       "name": "mcp-localbridge",
       "type": "sse",
-      "url": "http://localhost:28028/api/mcp",
+      "url": "http://localhost:28028/api/mcp/sse",
       "timeout": 30000
     }
   ]
@@ -530,7 +527,7 @@ make docker-stop
 ```
 
 Then configure your IDE to connect to:
-- **SSE (Recommended)**: `http://localhost:28028/api/mcp`
+- **SSE (Recommended)**: `http://localhost:28028/api/mcp/sse`
   - Primary HTTP-based transport for MCP
   - Supports real-time streaming
   - Works with Docker deployments
