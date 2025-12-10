@@ -85,7 +85,7 @@ make docker-run
 docker ps | grep mcp-localbridge
 
 # 3. View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 **Useful Commands:**
@@ -119,7 +119,7 @@ docker ps | grep mcp-localbridge
 curl http://localhost:28028/api/mcp/sse
 
 # View service logs
-docker-compose logs --tail=50
+docker compose logs --tail=50
 ```
 
 **What to expect:**
@@ -390,7 +390,7 @@ Claude Desktop can connect to MCP servers using the Stdio transport.
 4. **Verify in Claude Desktop**
    - Restart Claude Desktop
    - The MCP server will start automatically when you interact with it
-   - Check the server logs: `docker-compose logs -f` (if using Docker)
+   - Check the server logs: `docker compose logs -f` (if using Docker)
 
 ### Cursor IDE Configuration
 
@@ -520,7 +520,7 @@ make docker-run
 make docker-update
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop server
 make docker-stop
@@ -545,8 +545,8 @@ Then configure your IDE to connect to:
    - Ensure correct port numbers
 
 2. **Tools not showing up**
-   - Check server logs: `docker-compose logs mcp-server`
-   - Verify database connections: `docker-compose logs | grep -i "error"`
+   - Check server logs: `docker compose logs mcp-server`
+   - Verify database connections: `docker compose logs | grep -i "error"`
    - Ensure config.yaml is valid YAML
 
 3. **Database connection errors in IDE**
@@ -557,7 +557,7 @@ Then configure your IDE to connect to:
 4. **Logs and debugging**
    ```bash
    # View real-time logs
-   docker-compose logs -f
+   docker compose logs -f
 
    # Increase log level for debugging
    LOG_LEVEL=debug make docker-run

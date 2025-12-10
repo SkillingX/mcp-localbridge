@@ -47,7 +47,7 @@ RUN chown -R mcp:mcp /app
 USER mcp
 
 # Expose ports for HTTP and SSE transports
-EXPOSE 8080 8081
+EXPOSE 28027 28028
 
 # Set default command
 ENTRYPOINT ["/app/mcp-server"]

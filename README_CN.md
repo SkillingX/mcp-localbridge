@@ -85,7 +85,7 @@ make docker-run
 docker ps | grep mcp-localbridge
 
 # 3. 查看日志
-docker-compose logs -f
+docker compose logs -f
 ```
 
 **常用命令：**
@@ -119,7 +119,7 @@ docker ps | grep mcp-localbridge
 curl http://localhost:28028/api/mcp/sse
 
 # 查看服务日志
-docker-compose logs --tail=50
+docker compose logs --tail=50
 ```
 
 **预期结果：**
@@ -390,7 +390,7 @@ Claude Desktop 可以使用 Stdio 传输方式连接 MCP 服务器。
 4. **在 Claude Desktop 中验证**
    - 重启 Claude Desktop
    - MCP 服务器会在您与其交互时自动启动
-   - 检查服务器日志：`docker-compose logs -f`（如果使用 Docker）
+   - 检查服务器日志：`docker compose logs -f`（如果使用 Docker）
 
 ### Cursor IDE 配置
 
@@ -520,7 +520,7 @@ make docker-run
 make docker-update
 
 # 查看日志
-docker-compose logs -f
+docker compose logs -f
 
 # 停止服务器
 make docker-stop
@@ -545,8 +545,8 @@ make docker-stop
    - 确保端口号正确
 
 2. **工具未显示**
-   - 检查服务器日志：`docker-compose logs mcp-server`
-   - 验证数据库连接：`docker-compose logs | grep -i "error"`
+   - 检查服务器日志：`docker compose logs mcp-server`
+   - 验证数据库连接：`docker compose logs | grep -i "error"`
    - 确保 config.yaml 是有效的 YAML
 
 3. **IDE 中的数据库连接错误**
@@ -557,7 +557,7 @@ make docker-stop
 4. **日志和调试**
    ```bash
    # 查看实时日志
-   docker-compose logs -f
+   docker compose logs -f
 
    # 增加日志级别以进行调试
    LOG_LEVEL=debug make docker-run

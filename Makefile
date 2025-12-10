@@ -46,12 +46,12 @@ docker-build: ## Build Docker image
 
 docker-run: ## Run Docker container
 	@echo "Running Docker container..."
-	@docker-compose up -d
-	@echo "Container started. Use 'docker-compose logs -f' to view logs"
+	@docker compose up -d
+	@echo "Container started. Use 'docker compose logs -f' to view logs"
 
 docker-stop: ## Stop Docker container
 	@echo "Stopping Docker container..."
-	@docker-compose down
+	@docker compose down
 
 docker-update: docker-stop docker-build docker-run ## Update Docker image and restart container
 	@echo "Docker update complete"
