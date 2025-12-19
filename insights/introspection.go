@@ -50,7 +50,7 @@ func (h *IntrospectionHandler) HandleIntrospection(ctx context.Context, request 
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(formatDatabaseNotFoundError(dbName, h.repositories)), nil
 	}
 
 	// Check if refresh is requested
@@ -128,7 +128,11 @@ func (h *IntrospectionHandler) HandleIntrospection(ctx context.Context, request 
 		"cache_ttl":   h.config.CacheTTL,
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal introspection response", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
 
 	// Cache the result if Redis cache is enabled
 	if h.config.UseRedisCache && len(h.redisClients) > 0 {

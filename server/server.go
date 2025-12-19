@@ -84,6 +84,7 @@ func (s *MCPServer) registerTools() error {
 	metadataHandler := insights.NewMetadataHandler(s.repositories, s.logger)
 
 	// Register database tools
+	s.registerDBListDatabasesTool(dbToolsHandler)
 	s.registerDBQueryTool(dbToolsHandler)
 	s.registerDBTableListTool(dbToolsHandler)
 	s.registerDBTablePreviewTool(dbToolsHandler)
@@ -105,6 +106,13 @@ func (s *MCPServer) registerTools() error {
 }
 
 // Database Tools Registration
+
+func (s *MCPServer) registerDBListDatabasesTool(handler *tools.DBToolsHandler) {
+	tool := mcp.NewTool("db_list_databases",
+		mcp.WithDescription("List all available database instances configured in the MCP server. Use these database names when calling other database tools."),
+	)
+	s.server.AddTool(tool, handler.HandleDBListDatabases)
+}
 
 func (s *MCPServer) registerDBQueryTool(handler *tools.DBToolsHandler) {
 	tool := mcp.NewTool("db_query",

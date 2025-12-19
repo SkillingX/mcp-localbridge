@@ -51,7 +51,7 @@ func (h *SemanticSummaryHandler) HandleSemanticSummary(ctx context.Context, requ
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(formatDatabaseNotFoundError(dbName, h.repositories)), nil
 	}
 
 	// Get table schema
@@ -93,6 +93,7 @@ func (h *SemanticSummaryHandler) HandleSemanticSummary(ctx context.Context, requ
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
+			h.logger.WarnContext(ctx, "Failed to scan sample data row", "table", tableName, "error", err)
 			continue
 		}
 
@@ -121,7 +122,11 @@ func (h *SemanticSummaryHandler) HandleSemanticSummary(ctx context.Context, requ
 		"description":  "This result includes an LLM prompt template for generating semantic summaries. MCP clients (like Vibe Coding) can use this prompt to call their LLM and get business-meaningful insights.",
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal semantic summary response", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 

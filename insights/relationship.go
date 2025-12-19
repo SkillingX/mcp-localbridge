@@ -50,7 +50,7 @@ func (h *RelationshipHandler) HandleRelationship(ctx context.Context, request mc
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(formatDatabaseNotFoundError(dbName, h.repositories)), nil
 	}
 
 	// Optional: specific table to analyze
@@ -125,7 +125,11 @@ func (h *RelationshipHandler) HandleRelationship(ctx context.Context, request mc
 		"llm_prompt":         buildRelationshipPrompt(dbName, relationshipGraph),
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal relationship response", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
 
 	// Cache the result
 	if h.config.CacheEnabled && len(h.redisClients) > 0 {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -30,6 +31,22 @@ func NewDBToolsHandler(repos map[string]db.Repository, cfg config.DBToolsConfig,
 	}
 }
 
+// getAvailableDatabases returns a sorted list of available database names
+func (h *DBToolsHandler) getAvailableDatabases() []string {
+	databases := make([]string, 0, len(h.repositories))
+	for name := range h.repositories {
+		databases = append(databases, name)
+	}
+	sort.Strings(databases)
+	return databases
+}
+
+// formatDatabaseNotFoundError creates a helpful error message with available databases
+// Uses shared implementation from db package
+func (h *DBToolsHandler) formatDatabaseNotFoundError(dbName string) string {
+	return db.FormatDatabaseNotFoundError(dbName, h.repositories)
+}
+
 // HandleDBQuery executes a database query with safe parameter binding
 // CRITICAL: Uses parameterized queries to prevent SQL injection
 func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -49,7 +66,7 @@ func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallTool
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(h.formatDatabaseNotFoundError(dbName)), nil
 	}
 
 	// Parse conditions (WHERE clause as JSON object)
@@ -90,7 +107,11 @@ func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallTool
 			"params":      params,
 			"description": "Preview of the SQL query. Set dry_run=false to execute.",
 		}
-		previewJSON, _ := json.MarshalIndent(preview, "", "  ")
+		previewJSON, err := json.MarshalIndent(preview, "", "  ")
+		if err != nil {
+			h.logger.ErrorContext(ctx, "Failed to marshal dry-run preview", "error", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal preview: %v", err)), nil
+		}
 		return mcp.NewToolResultText(string(previewJSON)), nil
 	}
 
@@ -112,7 +133,11 @@ func (h *DBToolsHandler) HandleDBQuery(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError(fmt.Sprintf("failed to parse query results: %v", err)), nil
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal query result", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal result: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
@@ -129,7 +154,7 @@ func (h *DBToolsHandler) HandleDBTableList(ctx context.Context, request mcp.Call
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(h.formatDatabaseNotFoundError(dbName)), nil
 	}
 
 	// Get table list based on repository type
@@ -154,7 +179,11 @@ func (h *DBToolsHandler) HandleDBTableList(ctx context.Context, request mcp.Call
 		"count":    len(tables),
 	}
 
-	resultJSON, _ := json.MarshalIndent(result, "", "  ")
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal table list", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal table list: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
@@ -176,7 +205,7 @@ func (h *DBToolsHandler) HandleDBTablePreview(ctx context.Context, request mcp.C
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(h.formatDatabaseNotFoundError(dbName)), nil
 	}
 
 	// Build preview query (limit to configured preview limit)
@@ -206,7 +235,43 @@ func (h *DBToolsHandler) HandleDBTablePreview(ctx context.Context, request mcp.C
 		"data":          result,
 	}
 
-	resultJSON, _ := json.MarshalIndent(response, "", "  ")
+	resultJSON, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal table preview", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal preview: %v", err)), nil
+	}
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+// HandleDBListDatabases returns a list of all available database instances
+func (h *DBToolsHandler) HandleDBListDatabases(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.logger.InfoContext(ctx, "Handling db_list_databases tool request")
+
+	// Get all available databases with their types
+	databases := make([]map[string]any, 0, len(h.repositories))
+	for name, repo := range h.repositories {
+		dbInfo := map[string]any{
+			"name":   name,
+			"driver": repo.GetDriver(),
+		}
+		databases = append(databases, dbInfo)
+	}
+
+	// Sort by name for consistent output
+	sort.Slice(databases, func(i, j int) bool {
+		return databases[i]["name"].(string) < databases[j]["name"].(string)
+	})
+
+	result := map[string]any{
+		"databases": databases,
+		"count":     len(databases),
+	}
+
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal database list", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal database list: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 

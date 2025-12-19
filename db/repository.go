@@ -3,6 +3,9 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sort"
+	"strings"
 )
 
 // Repository defines the interface for database operations
@@ -76,4 +79,19 @@ type ForeignKeyInfo struct {
 	ReferencedColumn string `json:"referenced_column"`
 	OnDelete         string `json:"on_delete,omitempty"`
 	OnUpdate         string `json:"on_update,omitempty"`
+}
+
+// FormatDatabaseNotFoundError creates a helpful error message with available databases
+// This is a shared utility function used by tools and insights handlers
+func FormatDatabaseNotFoundError(dbName string, repositories map[string]Repository) string {
+	available := make([]string, 0, len(repositories))
+	for name := range repositories {
+		available = append(available, name)
+	}
+	sort.Strings(available)
+
+	if len(available) == 0 {
+		return fmt.Sprintf("database '%s' not found. No databases are configured or enabled.", dbName)
+	}
+	return fmt.Sprintf("database '%s' not found or not enabled. Available databases: %s", dbName, strings.Join(available, ", "))
 }

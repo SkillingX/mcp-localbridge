@@ -72,7 +72,7 @@ func (h *AnalyticsHandler) HandleAnalytics(ctx context.Context, request mcp.Call
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(formatDatabaseNotFoundError(dbName, h.repositories)), nil
 	}
 
 	// Optional: conditions and group_by
@@ -117,6 +117,7 @@ func (h *AnalyticsHandler) HandleAnalytics(ctx context.Context, request mcp.Call
 		}
 
 		if err := rows.Scan(valuePtrs...); err != nil {
+			h.logger.WarnContext(ctx, "Failed to scan analytics row", "error", err)
 			continue
 		}
 
@@ -144,6 +145,10 @@ func (h *AnalyticsHandler) HandleAnalytics(ctx context.Context, request mcp.Call
 		"query":        query,
 	}
 
-	resultJSON, _ := json.MarshalIndent(response, "", "  ")
+	resultJSON, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal analytics response", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }

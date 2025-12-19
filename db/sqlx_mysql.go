@@ -89,9 +89,9 @@ func (r *MySQLRepository) Ping(ctx context.Context) error {
 // GetTableList returns a list of all tables in the database
 func (r *MySQLRepository) GetTableList(ctx context.Context) ([]string, error) {
 	qb := NewQueryBuilder("mysql")
-	query := qb.BuildTableList("")
+	query, params := qb.BuildTableList("")
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query table list: %w", err)
 	}
@@ -116,9 +116,12 @@ func (r *MySQLRepository) GetTableList(ctx context.Context) ([]string, error) {
 // GetTableInfo returns detailed information about a table
 func (r *MySQLRepository) GetTableInfo(ctx context.Context, tableName string) (*TableInfo, error) {
 	qb := NewQueryBuilder("mysql")
-	query := qb.BuildTableSchema(tableName, "")
+	query, params, err := qb.BuildTableSchema(tableName, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to build table schema query: %w", err)
+	}
 
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query table schema: %w", err)
 	}

@@ -47,7 +47,7 @@ func (h *MetadataHandler) HandleMetadata(ctx context.Context, request mcp.CallTo
 	// Get repository
 	repo, ok := h.repositories[dbName]
 	if !ok {
-		return mcp.NewToolResultError(fmt.Sprintf("database '%s' not found or not enabled", dbName)), nil
+		return mcp.NewToolResultError(formatDatabaseNotFoundError(dbName, h.repositories)), nil
 	}
 
 	// Get table metadata based on database type
@@ -75,7 +75,11 @@ func (h *MetadataHandler) HandleMetadata(ctx context.Context, request mcp.CallTo
 		}
 	}
 
-	resultJSON, _ := json.MarshalIndent(metadata, "", "  ")
+	resultJSON, err := json.MarshalIndent(metadata, "", "  ")
+	if err != nil {
+		h.logger.ErrorContext(ctx, "Failed to marshal metadata response", "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
@@ -111,6 +115,7 @@ func (h *MetadataHandler) getMySQLMetadata(ctx context.Context, repo *db.MySQLRe
 	for rows.Next() {
 		var colName, colComment, colType, isNullable, colKey string
 		if err := rows.Scan(&colName, &colComment, &colType, &isNullable, &colKey); err != nil {
+			h.logger.WarnContext(ctx, "Failed to scan MySQL column metadata", "table", tableName, "error", err)
 			continue
 		}
 
@@ -172,6 +177,7 @@ func (h *MetadataHandler) getPostgresMetadata(ctx context.Context, repo *db.Post
 		var colDefault, colComment sql.NullString
 
 		if err := rows.Scan(&colName, &dataType, &isNullable, &colDefault, &colComment); err != nil {
+			h.logger.WarnContext(ctx, "Failed to scan PostgreSQL column metadata", "table", tableName, "error", err)
 			continue
 		}
 

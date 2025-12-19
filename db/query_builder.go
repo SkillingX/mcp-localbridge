@@ -195,28 +195,50 @@ func (qb *QueryBuilder) isValidOrderBy(orderBy string) bool {
 }
 
 // BuildTableList builds a query to list all tables in a database
-func (qb *QueryBuilder) BuildTableList(schema string) string {
+// CRITICAL: Uses parameterized queries to prevent SQL injection
+func (qb *QueryBuilder) BuildTableList(schema string) (string, []any) {
 	if qb.driver == "postgres" {
 		if schema != "" {
-			return fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' AND table_type = 'BASE TABLE' ORDER BY table_name", schema)
+			// Validate schema name as additional security layer
+			if !qb.isValidIdentifier(schema) {
+				// Return safe default with public schema
+				return "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name", []any{"public"}
+			}
+			return "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name", []any{schema}
 		}
-		return "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name"
+		return "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name", []any{"public"}
 	}
+
 	// MySQL
 	if schema != "" {
-		return fmt.Sprintf("SELECT table_name FROM information_schema.tables WHERE table_schema = '%s' AND table_type = 'BASE TABLE' ORDER BY table_name", schema)
+		// Validate schema name as additional security layer
+		if !qb.isValidIdentifier(schema) {
+			// Return query using DATABASE() as safe default
+			return "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name", nil
+		}
+		return "SELECT table_name FROM information_schema.tables WHERE table_schema = ? AND table_type = 'BASE TABLE' ORDER BY table_name", []any{schema}
 	}
-	return "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name"
+	return "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name", nil
 }
 
 // BuildTableSchema builds a query to get table schema information
-func (qb *QueryBuilder) BuildTableSchema(table, schema string) string {
+// CRITICAL: Uses parameterized queries to prevent SQL injection
+func (qb *QueryBuilder) BuildTableSchema(table, schema string) (string, []any, error) {
+	// Validate table name - this is required
+	if !qb.isValidIdentifier(table) {
+		return "", nil, fmt.Errorf("invalid table name: %s", table)
+	}
+
 	if qb.driver == "postgres" {
 		schemaFilter := "public"
 		if schema != "" {
+			if !qb.isValidIdentifier(schema) {
+				return "", nil, fmt.Errorf("invalid schema name: %s", schema)
+			}
 			schemaFilter = schema
 		}
-		return fmt.Sprintf(`
+
+		query := `
 			SELECT
 				column_name,
 				data_type,
@@ -224,18 +246,35 @@ func (qb *QueryBuilder) BuildTableSchema(table, schema string) string {
 				column_default,
 				CASE WHEN column_name IN (
 					SELECT column_name FROM information_schema.key_column_usage
-					WHERE table_name = '%s' AND constraint_name LIKE '%%pkey'
+					WHERE table_name = $1 AND constraint_name LIKE '%pkey'
 				) THEN true ELSE false END as is_primary_key
 			FROM information_schema.columns
-			WHERE table_name = '%s' AND table_schema = '%s'
-			ORDER BY ordinal_position`, table, table, schemaFilter)
+			WHERE table_name = $2 AND table_schema = $3
+			ORDER BY ordinal_position`
+
+		return query, []any{table, table, schemaFilter}, nil
 	}
+
 	// MySQL
-	schemaFilter := "DATABASE()"
 	if schema != "" {
-		schemaFilter = fmt.Sprintf("'%s'", schema)
+		if !qb.isValidIdentifier(schema) {
+			return "", nil, fmt.Errorf("invalid schema name: %s", schema)
+		}
+		query := `
+			SELECT
+				column_name,
+				data_type,
+				is_nullable,
+				column_default,
+				column_key = 'PRI' as is_primary_key
+			FROM information_schema.columns
+			WHERE table_name = ? AND table_schema = ?
+			ORDER BY ordinal_position`
+		return query, []any{table, schema}, nil
 	}
-	return fmt.Sprintf(`
+
+	// MySQL without explicit schema - use DATABASE()
+	query := `
 		SELECT
 			column_name,
 			data_type,
@@ -243,6 +282,7 @@ func (qb *QueryBuilder) BuildTableSchema(table, schema string) string {
 			column_default,
 			column_key = 'PRI' as is_primary_key
 		FROM information_schema.columns
-		WHERE table_name = '%s' AND table_schema = %s
-		ORDER BY ordinal_position`, table, schemaFilter)
+		WHERE table_name = ? AND table_schema = DATABASE()
+		ORDER BY ordinal_position`
+	return query, []any{table}, nil
 }
